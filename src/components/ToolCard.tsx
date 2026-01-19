@@ -1,7 +1,5 @@
-'use client'
-
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase'
 
 interface Tool {
   id: string
@@ -20,7 +18,6 @@ interface ToolCardProps {
 
 export default function ToolCard({ tool }: ToolCardProps) {
   const [viewCount, setViewCount] = useState(tool.view_count)
-  const supabase = createClient()
 
   const handleClick = async () => {
     // Track view

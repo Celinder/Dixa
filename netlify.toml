@@ -1,14 +1,11 @@
 [build]
   command = "npm run build"
-  publish = ".next"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
+  publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# Redirect rules
+# SPA redirect rules
 [[redirects]]
   from = "/*"
   to = "/index.html"

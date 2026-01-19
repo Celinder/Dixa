@@ -1,19 +1,22 @@
-'use client'
-
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/context/AuthContext'
 
 export default function Header() {
-  const router = useRouter()
-  const supabase = createClient()
+  const navigate = useNavigate()
+  const { signOut } = useAuth()
   const [loading, setLoading] = useState(false)
 
   const handleSignOut = async () => {
     setLoading(true)
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
+    try {
+      await signOut()
+      navigate('/login')
+    } catch (error) {
+      console.error('Error signing out:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

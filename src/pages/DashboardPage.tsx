@@ -1,7 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
-import ToolCard from '@/components/ToolCard'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import Link from 'next/link'
+import ToolCard from '@/components/ToolCard'
 
 interface Tool {
   id: string
@@ -25,42 +26,30 @@ interface Category {
   display_order: number
 }
 
-async function getTools() {
-  const supabase = await createClient()
+export default function DashboardPage() {
+  const [tools, setTools] = useState<Tool[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const { data: tools, error } = await supabase
-    .from('tools')
-    .select('*')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
+  useEffect(() => {
+    fetchData()
+  }, [])
 
-  if (error) {
-    console.error('Error fetching tools:', error)
-    return []
+  const fetchData = async () => {
+    try {
+      const [toolsResponse, categoriesResponse] = await Promise.all([
+        supabase.from('tools').select('*').eq('status', 'active').order('created_at', { ascending: false }),
+        supabase.from('categories').select('*').order('display_order', { ascending: true }),
+      ])
+
+      if (toolsResponse.data) setTools(toolsResponse.data)
+      if (categoriesResponse.data) setCategories(categoriesResponse.data)
+    } catch (error) {
+      console.error('Error fetching data:', error)
+    } finally {
+      setLoading(false)
+    }
   }
-
-  return tools as Tool[]
-}
-
-async function getCategories() {
-  const supabase = await createClient()
-
-  const { data: categories, error } = await supabase
-    .from('categories')
-    .select('*')
-    .order('display_order', { ascending: true })
-
-  if (error) {
-    console.error('Error fetching categories:', error)
-    return []
-  }
-
-  return categories as Category[]
-}
-
-export default async function HomePage() {
-  const tools = await getTools()
-  const categories = await getCategories()
 
   // Group tools by category
   const toolsByCategory = tools.reduce((acc, tool) => {
@@ -71,6 +60,14 @@ export default async function HomePage() {
     acc[categoryId].push(tool)
     return acc
   }, {} as Record<string, Tool[]>)
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-2xl text-primary">Loading...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen">
@@ -91,7 +88,7 @@ export default async function HomePage() {
         {/* Add New Tool Button */}
         <div className="mb-8">
           <Link
-            href="/admin/add-tool"
+            to="/admin/add-tool"
             className="inline-flex items-center px-6 py-3 bg-primary text-light-text rounded-lg font-medium hover:bg-primary/90 transition-colors"
           >
             <span className="mr-2">➕</span>
@@ -108,7 +105,7 @@ export default async function HomePage() {
               Get started by adding your first tool to the hub
             </p>
             <Link
-              href="/admin/add-tool"
+              to="/admin/add-tool"
               className="inline-flex items-center px-6 py-3 bg-primary text-light-text rounded-lg font-medium hover:bg-primary/90 transition-colors"
             >
               <span className="mr-2">➕</span>

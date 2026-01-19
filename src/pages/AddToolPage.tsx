@@ -1,9 +1,6 @@
-'use client'
-
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
 
 interface Category {
   id: string
@@ -11,20 +8,28 @@ interface Category {
   icon: string
 }
 
-export default function AddToolPage() {
-  const router = useRouter()
-  const supabase = createClient()
+interface FormData {
+  name: string
+  description: string
+  url: string
+  type: 'artifact' | 'repo' | 'webapp' | 'external'
+  category_id: string
+  icon: string
+  tags: string
+}
 
+export default function AddToolPage() {
+  const navigate = useNavigate()
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     name: '',
     description: '',
     url: '',
-    type: 'artifact' as 'artifact' | 'repo' | 'webapp' | 'external',
+    type: 'artifact',
     category_id: '',
     icon: '🔧',
     tags: '',
@@ -35,7 +40,7 @@ export default function AddToolPage() {
   }, [])
 
   const fetchCategories = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('categories')
       .select('id, name, icon')
       .order('display_order', { ascending: true })
@@ -48,7 +53,7 @@ export default function AddToolPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
@@ -95,8 +100,7 @@ export default function AddToolPage() {
 
       // Redirect after 2 seconds
       setTimeout(() => {
-        router.push('/')
-        router.refresh()
+        navigate('/')
       }, 2000)
     } catch (err: any) {
       setError(err.message || 'Failed to add tool')
@@ -106,7 +110,7 @@ export default function AddToolPage() {
   }
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setFormData({
       ...formData,
@@ -121,7 +125,7 @@ export default function AddToolPage() {
       <header className="bg-white border-b border-secondary/20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-16">
-            <Link href="/" className="flex items-center text-secondary hover:text-primary">
+            <Link to="/" className="flex items-center text-secondary hover:text-primary">
               <span className="mr-2">←</span>
               <span>Back to Hub</span>
             </Link>
@@ -305,7 +309,7 @@ export default function AddToolPage() {
                 {loading ? 'Adding Tool...' : 'Add Tool'}
               </button>
               <Link
-                href="/"
+                to="/"
                 className="px-6 py-3 border border-secondary/30 rounded-lg font-medium text-secondary hover:border-secondary hover:text-primary transition-colors text-center"
               >
                 Cancel

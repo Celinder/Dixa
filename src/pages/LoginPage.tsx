@@ -1,34 +1,23 @@
-'use client'
-
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useState, FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/context/AuthContext'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
-  const supabase = createClient()
+  const navigate = useNavigate()
+  const { signIn } = useAuth()
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) throw error
-
-      if (data.user) {
-        router.push('/')
-        router.refresh()
-      }
+      await signIn(email, password)
+      navigate('/')
     } catch (err: any) {
       setError(err.message || 'Failed to login')
     } finally {

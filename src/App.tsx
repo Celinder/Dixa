@@ -4,6 +4,7 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import AddToolPage from '@/pages/AddToolPage'
+import ConversationGeneratorPage from '@/pages/ConversationGeneratorPage'
 
 function App() {
   return (
@@ -24,6 +25,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AddToolPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/conversation-generator"
+            element={
+              <ProtectedRoute>
+                <ConversationGeneratorPage />
               </ProtectedRoute>
             }
           />

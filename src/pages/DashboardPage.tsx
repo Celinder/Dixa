@@ -85,6 +85,29 @@ export default function DashboardPage() {
           </p>
         </div>
 
+        {/* Featured Tool: Conversation Generator */}
+        <div className="mb-8 bg-white rounded-lg border-2 border-primary/20 p-6 hover:border-primary/40 transition-colors">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-3xl">💬</span>
+                <h2 className="text-2xl font-bold text-primary">Conversation Generator</h2>
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">Featured</span>
+              </div>
+              <p className="text-secondary mb-4">
+                Generate realistic test conversations in your Dixa instance. Perfect for demos, testing, and training.
+              </p>
+              <Link
+                to="/conversation-generator"
+                className="inline-flex items-center px-6 py-3 bg-primary text-light-text rounded-lg font-medium hover:bg-primary/90 transition-colors"
+              >
+                <span className="mr-2">🚀</span>
+                Open Conversation Generator
+              </Link>
+            </div>
+          </div>
+        </div>
+
         {/* Add New Tool Button */}
         <div className="mb-8">
           <Link

@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
 import Header from '@/components/Header'
+import { dixaApi } from '@/lib/dixaApi'
 
 interface ContactEndpoint {
   id: string
@@ -48,17 +49,7 @@ export default function ConversationGeneratorPage() {
     setLoadingEndpoints(true)
     setError('')
     try {
-      const response = await fetch('https://dev.dixa.io/v1/contact-endpoints', {
-        headers: {
-          Authorization: token,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch contact endpoints. Check your API token.')
-      }
-
-      const data = await response.json()
+      const data = await dixaApi(token, '/v1/contact-endpoints', 'GET')
       const emailEndpoints = data.data.filter((ep: ContactEndpoint) => ep.type === 'Email')
       setContactEndpoints(emailEndpoints)
 
@@ -66,7 +57,7 @@ export default function ConversationGeneratorPage() {
         setSelectedEndpointId(emailEndpoints[0].id)
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch contact endpoints')
+      setError(err.message || 'Failed to fetch contact endpoints. Check your API token.')
       setContactEndpoints([])
     } finally {
       setLoadingEndpoints(false)
@@ -205,43 +196,17 @@ export default function ConversationGeneratorPage() {
   }
 
   const createEndUser = async (displayName: string, email: string) => {
-    const response = await fetch('https://dev.dixa.io/v1/endusers', {
-      method: 'POST',
-      headers: {
-        'Authorization': apiToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ displayName, email }),
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to create end user')
-    }
-
-    const data = await response.json()
+    const data = await dixaApi(apiToken, '/v1/endusers', 'POST', { displayName, email })
     return data.data.id
   }
 
   const createConversation = async (endUserId: string, contactEndpointId: string, subject: string, message: string) => {
-    const response = await fetch('https://dev.dixa.io/v1/conversations', {
-      method: 'POST',
-      headers: {
-        'Authorization': apiToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        requesterId: endUserId,
-        contactEndpointId,
-        subject,
-        message: { content: message },
-      }),
+    return await dixaApi(apiToken, '/v1/conversations', 'POST', {
+      requesterId: endUserId,
+      contactEndpointId,
+      subject,
+      message: { content: message },
     })
-
-    if (!response.ok) {
-      throw new Error('Failed to create conversation')
-    }
-
-    return await response.json()
   }
 
   const handleGenerate = async (e: FormEvent) => {

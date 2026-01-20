@@ -228,6 +228,12 @@ export default function ConversationGeneratorPage() {
     return userIds[randomIndex]
   }
 
+  const getRandomTemplate = (templates: any[]): any => {
+    // Select a random template from the array
+    const randomIndex = Math.floor(Math.random() * templates.length)
+    return templates[randomIndex]
+  }
+
   const createConversation = async (apiToken: string, integrationId: string, subject: string, message: string, requesterId: string) => {
     return await dixaApi(apiToken, '/v1/conversations', 'POST', {
       requesterId: requesterId,
@@ -272,18 +278,16 @@ export default function ConversationGeneratorPage() {
       // Ensure end users exist for this org (creates if needed)
       const endUserIds = await ensureEndUsersExist(selectedOrgId, apiToken)
 
-      // Fetch template for selected vertical
+      // Fetch all templates for selected vertical
       const { data: templates, error: templateError } = await supabase
         .from('conversation_templates')
         .select('*')
         .eq('vertical', vertical)
-        .limit(1)
-        .single()
 
       if (templateError) throw templateError
 
-      if (!templates) {
-        throw new Error(`No template found for vertical: ${vertical}`)
+      if (!templates || templates.length === 0) {
+        throw new Error(`No templates found for vertical: ${vertical}`)
       }
 
       // Initialize results array
@@ -299,12 +303,15 @@ export default function ConversationGeneratorPage() {
           // Get a random user ID for this conversation
           const randomRequesterId = getRandomUserId(endUserIds)
 
-          // Create conversation with template and random requester
+          // Get a random template for this conversation
+          const randomTemplate = getRandomTemplate(templates)
+
+          // Create conversation with random template and random requester
           await createConversation(
             apiToken,
             selectedIntegrationId,
-            templates.subject,
-            templates.message_content,
+            randomTemplate.subject,
+            randomTemplate.message_content,
             randomRequesterId
           )
 

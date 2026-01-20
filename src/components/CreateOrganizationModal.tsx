@@ -34,7 +34,7 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }: 
 
     try {
       // Fetch organization details from Dixa API
-      const data = await dixaApi(apiToken, '/v1/organization', 'GET')
+      const data = await dixaApi(apiToken.trim(), '/v1/organization', 'GET')
 
       if (data && data.data) {
         setOrgDetails({
@@ -83,7 +83,7 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }: 
           subdomain: orgDetails.subdomain,
           dixa_org_id: orgDetails.id,
           status: orgDetails.status,
-          api_token_encrypted: apiToken, // Supabase will encrypt this via function
+          api_token_encrypted: apiToken.trim(), // Supabase will encrypt this via function
           created_by: user.id,
         })
         .select()
@@ -93,7 +93,7 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }: 
 
       // Fetch and store email integrations
       try {
-        const integrationsData = await dixaApi(apiToken, '/v1/email-integrations', 'GET')
+        const integrationsData = await dixaApi(apiToken.trim(), '/v1/email-integrations', 'GET')
 
         if (integrationsData && integrationsData.data && Array.isArray(integrationsData.data)) {
           const emailIntegrations = integrationsData.data

@@ -35,8 +35,6 @@ const VERTICALS = [
   'Telecom',
 ]
 
-const HARDCODED_REQUESTER_ID = '6e511c2f-ced6-485a-a702-bf22eed903a4'
-
 export default function ConversationGeneratorPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [selectedOrgId, setSelectedOrgId] = useState('')
@@ -122,9 +120,31 @@ export default function ConversationGeneratorPage() {
     return org.api_token_encrypted
   }
 
-  const createConversation = async (apiToken: string, integrationId: string, subject: string, message: string) => {
+  const fetchEndUsers = async (): Promise<string[]> => {
+    // Fetch all end users with Dixa IDs from database
+    const { data, error } = await supabase
+      .from('end_users')
+      .select('dixa_user_id')
+      .not('dixa_user_id', 'is', null)
+
+    if (error) throw error
+
+    if (!data || data.length === 0) {
+      throw new Error('No end users found in database')
+    }
+
+    return data.map((user) => user.dixa_user_id)
+  }
+
+  const getRandomUserId = (userIds: string[]): string => {
+    // Select a random user ID from the array
+    const randomIndex = Math.floor(Math.random() * userIds.length)
+    return userIds[randomIndex]
+  }
+
+  const createConversation = async (apiToken: string, integrationId: string, subject: string, message: string, requesterId: string) => {
     return await dixaApi(apiToken, '/v1/conversations', 'POST', {
-      requesterId: HARDCODED_REQUESTER_ID,
+      requesterId: requesterId,
       emailIntegrationId: integrationId,
       subject: subject,
       message: {
@@ -162,6 +182,9 @@ export default function ConversationGeneratorPage() {
       // Get API token
       const apiToken = getApiToken(selectedOrgId)
 
+      // Fetch end users for random selection
+      const endUserIds = await fetchEndUsers()
+
       // Fetch template for selected vertical
       const { data: templates, error: templateError } = await supabase
         .from('conversation_templates')
@@ -186,12 +209,16 @@ export default function ConversationGeneratorPage() {
       // Create conversations one by one
       for (let i = 0; i < numberOfConversations; i++) {
         try {
-          // Create conversation with template
+          // Get a random user ID for this conversation
+          const randomRequesterId = getRandomUserId(endUserIds)
+
+          // Create conversation with template and random requester
           await createConversation(
             apiToken,
             selectedIntegrationId,
             templates.subject,
-            templates.message_content
+            templates.message_content,
+            randomRequesterId
           )
 
           // Mark as success

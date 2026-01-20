@@ -123,21 +123,91 @@ export default function ConversationGeneratorPage() {
   }
 
   const ensureEndUsersExist = async (orgId: string, apiToken: string): Promise<string[]> => {
-    // Check if org already has end users created
-    const org = organizations.find((o) => o.id === orgId)
+    // Check if test users exist in Dixa (using Emma as indicator)
+    // This is the source of truth - we check Dixa, not database flags
+    setSetupProgress('Checking for existing test users in Dixa...')
 
-    if (org?.end_users_created) {
-      // Fetch existing user IDs for this org
-      const { data, error } = await supabase
-        .from('organization_end_users')
-        .select('dixa_user_id')
-        .eq('organization_id', orgId)
+    try {
+      const checkResponse = await dixaApi(apiToken, '/v1/endusers?email=emma.johnson@example.com', 'GET')
 
-      if (error) throw error
+      if (checkResponse && checkResponse.data && checkResponse.data.length > 0) {
+        // Users exist in Dixa! Now fetch all 20 users from Dixa using their emails
+        setSetupProgress('Loading existing test users from Dixa...')
 
-      if (data && data.length > 0) {
-        return data.map((u) => u.dixa_user_id)
+        // Fetch base end users from database to get their emails
+        const { data: baseUsers, error: baseError } = await supabase
+          .from('end_users')
+          .select('*')
+          .order('display_name', { ascending: true })
+
+        if (baseError) throw baseError
+        if (!baseUsers || baseUsers.length === 0) {
+          throw new Error('No base end users found in database')
+        }
+
+        const allUserIds: string[] = []
+        const mappingsToStore: any[] = []
+
+        // Fetch each user's organization-specific ID from Dixa
+        for (let i = 0; i < baseUsers.length; i++) {
+          const user = baseUsers[i]
+          setSetupProgress(`Fetching test user ${i + 1}/${baseUsers.length} from Dixa: ${user.display_name}...`)
+
+          try {
+            const userResponse = await dixaApi(apiToken, `/v1/endusers?email=${encodeURIComponent(user.email)}`, 'GET')
+
+            if (userResponse && userResponse.data && userResponse.data.length > 0) {
+              const dixaUserId = userResponse.data[0].id
+              allUserIds.push(dixaUserId)
+              mappingsToStore.push({
+                organization_id: orgId,
+                base_end_user_id: user.id,
+                dixa_user_id: dixaUserId,
+              })
+            }
+
+            // Small delay to avoid rate limiting
+            await new Promise((resolve) => setTimeout(resolve, 200))
+          } catch (err: any) {
+            console.error(`Failed to fetch user ${user.display_name}:`, err)
+            // Continue with other users even if one fails
+          }
+        }
+
+        if (allUserIds.length === 0) {
+          throw new Error('Failed to fetch any end user IDs from Dixa')
+        }
+
+        // Refresh mappings in database (delete old, insert new)
+        // This ensures we always have up-to-date org-specific IDs
+        await supabase
+          .from('organization_end_users')
+          .delete()
+          .eq('organization_id', orgId)
+
+        const { error: insertError } = await supabase
+          .from('organization_end_users')
+          .insert(mappingsToStore)
+
+        if (insertError) throw insertError
+
+        // Update the organization flag
+        await supabase
+          .from('organizations')
+          .update({ end_users_created: true })
+          .eq('id', orgId)
+
+        // Update local state
+        setOrganizations((prev) =>
+          prev.map((o) => (o.id === orgId ? { ...o, end_users_created: true } : o))
+        )
+
+        setSetupProgress('')
+        return allUserIds
       }
+    } catch (err: any) {
+      // Emma doesn't exist in Dixa, need to create all users
+      console.log('Test users not found in Dixa, will create them')
     }
 
     // Need to create end users for this org

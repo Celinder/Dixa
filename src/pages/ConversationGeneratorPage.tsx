@@ -11,6 +11,7 @@ interface Organization {
   subdomain: string
   status: string
   api_token_encrypted: string
+  end_users_created: boolean
 }
 
 interface EmailIntegration {
@@ -47,6 +48,7 @@ export default function ConversationGeneratorPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [setupProgress, setSetupProgress] = useState('')
 
   useEffect(() => {
     fetchOrganizations()
@@ -120,20 +122,104 @@ export default function ConversationGeneratorPage() {
     return org.api_token_encrypted
   }
 
-  const fetchEndUsers = async (): Promise<string[]> => {
-    // Fetch all end users with Dixa IDs from database
-    const { data, error } = await supabase
-      .from('end_users')
-      .select('dixa_user_id')
-      .not('dixa_user_id', 'is', null)
+  const ensureEndUsersExist = async (orgId: string, apiToken: string): Promise<string[]> => {
+    // Check if org already has end users created
+    const org = organizations.find((o) => o.id === orgId)
 
-    if (error) throw error
+    if (org?.end_users_created) {
+      // Fetch existing user IDs for this org
+      const { data, error } = await supabase
+        .from('organization_end_users')
+        .select('dixa_user_id')
+        .eq('organization_id', orgId)
 
-    if (!data || data.length === 0) {
-      throw new Error('No end users found in database')
+      if (error) throw error
+
+      if (data && data.length > 0) {
+        return data.map((u) => u.dixa_user_id)
+      }
     }
 
-    return data.map((user) => user.dixa_user_id)
+    // Need to create end users for this org
+    setSetupProgress('Setting up test users (one-time setup)...')
+
+    // Fetch base end users from database
+    const { data: baseUsers, error: baseError } = await supabase
+      .from('end_users')
+      .select('*')
+      .order('display_name', { ascending: true })
+
+    if (baseError) throw baseError
+    if (!baseUsers || baseUsers.length === 0) {
+      throw new Error('No base end users found in database')
+    }
+
+    const createdUserIds: string[] = []
+    const orgEndUsersToInsert: any[] = []
+
+    // Create each user in Dixa
+    for (let i = 0; i < baseUsers.length; i++) {
+      const user = baseUsers[i]
+      setSetupProgress(`Creating test user ${i + 1}/${baseUsers.length}: ${user.display_name}...`)
+
+      try {
+        const response = await dixaApi(apiToken, '/v1/endusers', 'POST', {
+          displayName: user.display_name,
+          email: user.email,
+          phoneNumber: user.phone_number,
+          additionalEmails: user.additional_emails || [],
+          additionalPhoneNumbers: user.additional_phone_numbers || [],
+          firstName: user.first_name,
+          lastName: user.last_name,
+          middleNames: user.middle_names || [],
+          avatarUrl: user.avatar_url,
+          externalId: user.external_id,
+        })
+
+        if (response && response.data && response.data.id) {
+          const dixaUserId = response.data.id
+          createdUserIds.push(dixaUserId)
+          orgEndUsersToInsert.push({
+            organization_id: orgId,
+            base_end_user_id: user.id,
+            dixa_user_id: dixaUserId,
+          })
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      } catch (err: any) {
+        console.error(`Failed to create user ${user.display_name}:`, err)
+        // Continue with other users even if one fails
+      }
+    }
+
+    if (createdUserIds.length === 0) {
+      throw new Error('Failed to create any end users')
+    }
+
+    // Store the mappings in database
+    const { error: insertError } = await supabase
+      .from('organization_end_users')
+      .insert(orgEndUsersToInsert)
+
+    if (insertError) throw insertError
+
+    // Update the organization flag
+    const { error: updateError } = await supabase
+      .from('organizations')
+      .update({ end_users_created: true })
+      .eq('id', orgId)
+
+    if (updateError) throw updateError
+
+    // Update local state
+    setOrganizations((prev) =>
+      prev.map((o) => (o.id === orgId ? { ...o, end_users_created: true } : o))
+    )
+
+    setSetupProgress('')
+    return createdUserIds
   }
 
   const getRandomUserId = (userIds: string[]): string => {
@@ -163,6 +249,7 @@ export default function ConversationGeneratorPage() {
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
+    setSetupProgress('')
     setIsGenerating(true)
     setResults([])
 
@@ -182,8 +269,8 @@ export default function ConversationGeneratorPage() {
       // Get API token
       const apiToken = getApiToken(selectedOrgId)
 
-      // Fetch end users for random selection
-      const endUserIds = await fetchEndUsers()
+      // Ensure end users exist for this org (creates if needed)
+      const endUserIds = await ensureEndUsersExist(selectedOrgId, apiToken)
 
       // Fetch template for selected vertical
       const { data: templates, error: templateError } = await supabase
@@ -243,6 +330,7 @@ export default function ConversationGeneratorPage() {
       }
     } catch (err: any) {
       setError(err.message || 'Failed to generate conversations')
+      setSetupProgress('')
     } finally {
       setIsGenerating(false)
     }
@@ -442,6 +530,13 @@ export default function ConversationGeneratorPage() {
                 Create between 1 and 50 conversations
               </p>
             </div>
+
+            {/* Setup Progress Message */}
+            {setupProgress && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
+                ⚙️ {setupProgress}
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (

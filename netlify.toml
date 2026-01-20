@@ -8,8 +8,9 @@
 [functions]
   directory = "netlify/functions"
 
-# SPA redirect rules
+# SPA redirect rules (exclude function routes)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+  force = false

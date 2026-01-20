@@ -231,7 +231,7 @@ export default function ConversationGeneratorPage() {
       const apiToken = getApiToken(selectedOrgId)
 
       // Fetch fresh integrations from Dixa API
-      const integrationsData = await dixaApi(apiToken, '/v1/email-integrations', 'GET')
+      const integrationsData = await dixaApi(apiToken, '/v1/contact-endpoints', 'GET')
 
       if (integrationsData && integrationsData.data && Array.isArray(integrationsData.data)) {
         // Delete existing integrations for this org
@@ -242,11 +242,11 @@ export default function ConversationGeneratorPage() {
 
         // Insert fresh integrations
         const emailIntegrations = integrationsData.data
-          .filter((integration: any) => integration.type === 'Email')
+          .filter((integration: any) => integration._type === 'EmailEndpoint')
           .map((integration: any) => ({
             organization_id: selectedOrgId,
-            integration_id: integration.id,
-            name: integration.name || integration.id,
+            integration_id: integration.address,
+            name: integration.name || integration.address,
             type: 'Email',
           }))
 

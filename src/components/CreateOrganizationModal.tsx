@@ -93,15 +93,15 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }: 
 
       // Fetch and store email integrations
       try {
-        const integrationsData = await dixaApi(apiToken.trim(), '/v1/email-integrations', 'GET')
+        const integrationsData = await dixaApi(apiToken.trim(), '/v1/contact-endpoints', 'GET')
 
         if (integrationsData && integrationsData.data && Array.isArray(integrationsData.data)) {
           const emailIntegrations = integrationsData.data
-            .filter((integration: any) => integration.type === 'Email')
+            .filter((integration: any) => integration._type === 'EmailEndpoint')
             .map((integration: any) => ({
               organization_id: org.id,
-              integration_id: integration.id,
-              name: integration.name || integration.id,
+              integration_id: integration.address,
+              name: integration.name || integration.address,
               type: 'Email',
             }))
 

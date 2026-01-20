@@ -113,14 +113,13 @@ export default function ConversationGeneratorPage() {
     }
   }
 
-  const getDecryptedToken = async (orgId: string): Promise<string> => {
-    // Call Supabase function to decrypt the token
-    const { data, error } = await supabase.rpc('decrypt_api_token', {
-      encrypted_token: organizations.find((org) => org.id === orgId)?.api_token_encrypted,
-    })
-
-    if (error) throw error
-    return data
+  const getApiToken = (orgId: string): string => {
+    // Get the API token directly from organizations (stored as plain text)
+    const org = organizations.find((org) => org.id === orgId)
+    if (!org || !org.api_token_encrypted) {
+      throw new Error('Organization API token not found')
+    }
+    return org.api_token_encrypted
   }
 
   const createConversation = async (apiToken: string, integrationId: string, subject: string, message: string) => {
@@ -160,8 +159,8 @@ export default function ConversationGeneratorPage() {
     }
 
     try {
-      // Get decrypted API token
-      const apiToken = await getDecryptedToken(selectedOrgId)
+      // Get API token
+      const apiToken = getApiToken(selectedOrgId)
 
       // Fetch template for selected vertical
       const { data: templates, error: templateError } = await supabase
@@ -229,7 +228,7 @@ export default function ConversationGeneratorPage() {
     setError('')
 
     try {
-      const apiToken = await getDecryptedToken(selectedOrgId)
+      const apiToken = getApiToken(selectedOrgId)
 
       // Fetch fresh integrations from Dixa API
       const integrationsData = await dixaApi(apiToken, '/v1/email-integrations', 'GET')

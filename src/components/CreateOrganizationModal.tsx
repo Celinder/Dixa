@@ -83,7 +83,7 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }: 
           subdomain: orgDetails.subdomain,
           dixa_org_id: orgDetails.id,
           status: orgDetails.status,
-          api_token_encrypted: apiToken.trim(), // Supabase will encrypt this via function
+          api_token_encrypted: apiToken.trim(), // Stored as plain text, protected by RLS
           created_by: user.id,
         })
         .select()

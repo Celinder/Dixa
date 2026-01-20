@@ -34,7 +34,7 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }: 
 
     try {
       // Fetch organization details from Dixa API
-      const data = await dixaApi(apiToken, '/v1/organizations/current', 'GET')
+      const data = await dixaApi(apiToken, '/v1/organization', 'GET')
 
       if (data && data.data) {
         setOrgDetails({

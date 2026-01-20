@@ -1,17 +1,27 @@
-import { useState, useEffect, FormEvent, ChangeEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import Header from '@/components/Header'
+import CreateOrganizationModal from '@/components/CreateOrganizationModal'
 import { dixaApi } from '@/lib/dixaApi'
+import { supabase } from '@/lib/supabase'
 
-interface ContactEndpoint {
+interface Organization {
   id: string
   name: string
-  type: string
+  subdomain: string
+  status: string
+  api_token_encrypted: string
+}
+
+interface EmailIntegration {
+  id: string
+  organization_id: string
+  integration_id: string
+  name: string
 }
 
 interface ConversationResult {
   index: number
-  customerName: string
   status: 'pending' | 'success' | 'error'
   error?: string
 }
@@ -25,187 +35,109 @@ const VERTICALS = [
   'Telecom',
 ]
 
+const HARDCODED_REQUESTER_ID = '6e511c2f-ced6-485a-a702-bf22eed903a4'
+
 export default function ConversationGeneratorPage() {
-  const [apiToken, setApiToken] = useState('')
+  const [organizations, setOrganizations] = useState<Organization[]>([])
+  const [selectedOrgId, setSelectedOrgId] = useState('')
+  const [emailIntegrations, setEmailIntegrations] = useState<EmailIntegration[]>([])
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState('')
   const [vertical, setVertical] = useState('E-commerce')
-  const [contactEndpoints, setContactEndpoints] = useState<ContactEndpoint[]>([])
-  const [selectedEndpointId, setSelectedEndpointId] = useState('')
   const [numberOfConversations, setNumberOfConversations] = useState(10)
   const [isGenerating, setIsGenerating] = useState(false)
   const [results, setResults] = useState<ConversationResult[]>([])
   const [error, setError] = useState('')
-  const [loadingEndpoints, setLoadingEndpoints] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
-  // Load API token from localStorage on mount
   useEffect(() => {
-    const savedToken = localStorage.getItem('dixa_api_token')
-    if (savedToken) {
-      setApiToken(savedToken)
-      fetchContactEndpoints(savedToken)
-    }
+    fetchOrganizations()
   }, [])
 
-  const fetchContactEndpoints = async (token: string) => {
-    setLoadingEndpoints(true)
-    setError('')
-    try {
-      const data = await dixaApi(token, '/v1/contact-endpoints', 'GET')
-      const emailEndpoints = data.data.filter((ep: ContactEndpoint) => ep.type === 'Email')
-      setContactEndpoints(emailEndpoints)
+  useEffect(() => {
+    if (selectedOrgId) {
+      fetchEmailIntegrations(selectedOrgId)
+    } else {
+      setEmailIntegrations([])
+      setSelectedIntegrationId('')
+    }
+  }, [selectedOrgId])
 
-      if (emailEndpoints.length > 0) {
-        setSelectedEndpointId(emailEndpoints[0].id)
+  const fetchOrganizations = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('status', 'Active')
+        .order('name', { ascending: true })
+
+      if (error) throw error
+
+      setOrganizations(data || [])
+
+      if (data && data.length > 0 && !selectedOrgId) {
+        setSelectedOrgId(data[0].id)
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch contact endpoints. Check your API token.')
-      setContactEndpoints([])
+      setError(err.message || 'Failed to fetch organizations')
     } finally {
-      setLoadingEndpoints(false)
+      setLoading(false)
     }
   }
 
-  const handleTokenChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const token = e.target.value
-    setApiToken(token)
-    if (token) {
-      localStorage.setItem('dixa_api_token', token)
-      fetchContactEndpoints(token)
-    } else {
-      localStorage.removeItem('dixa_api_token')
-      setContactEndpoints([])
+  const fetchEmailIntegrations = async (orgId: string) => {
+    setLoading(true)
+    setError('')
+    try {
+      const { data, error } = await supabase
+        .from('email_integrations')
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('name', { ascending: true })
+
+      if (error) throw error
+
+      setEmailIntegrations(data || [])
+
+      if (data && data.length > 0) {
+        setSelectedIntegrationId(data[0].integration_id)
+      } else {
+        setSelectedIntegrationId('')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch email integrations')
+      setEmailIntegrations([])
+    } finally {
+      setLoading(false)
     }
   }
 
-  const generateCustomerData = (index: number) => {
-    const firstNames = ['Emma', 'Liam', 'Olivia', 'Noah', 'Ava', 'Ethan', 'Sophia', 'Mason', 'Isabella', 'William']
-    const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez']
+  const getDecryptedToken = async (orgId: string): Promise<string> => {
+    // Call Supabase function to decrypt the token
+    const { data, error } = await supabase.rpc('decrypt_api_token', {
+      encrypted_token: organizations.find((org) => org.id === orgId)?.api_token_encrypted,
+    })
 
-    const firstName = firstNames[Math.floor(Math.random() * firstNames.length)]
-    const lastName = lastNames[Math.floor(Math.random() * lastNames.length)]
-    const displayName = `${firstName} ${lastName}`
-    const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${Date.now()}.${index}@testcustomer.com`
-
-    return { displayName, email }
+    if (error) throw error
+    return data
   }
 
-  const generateConversationContent = (vertical: string) => {
-    const templates: Record<string, { subjects: string[]; messages: string[] }> = {
-      'E-commerce': {
-        subjects: [
-          'Question about my order #12345',
-          'Return request for recent purchase',
-          'Product not as described',
-          'Delivery tracking issue',
-          'Discount code not working',
-        ],
-        messages: [
-          'Hi, I placed an order last week but haven\'t received any tracking information yet. Can you help me find out where my package is?',
-          'I received my order today, but the item doesn\'t match the description on your website. I\'d like to return it for a refund.',
-          'The discount code I received via email isn\'t working at checkout. Can you please check what\'s wrong?',
-          'My package was marked as delivered but I haven\'t received it. Can you help me locate it?',
-          'I\'m trying to change my shipping address before my order ships. Is this still possible?',
-        ],
-      },
-      'SaaS': {
-        subjects: [
-          'Cannot log into my account',
-          'Feature request: Export functionality',
-          'Billing question about recent charge',
-          'Integration with third-party tool',
-          'Account upgrade inquiry',
-        ],
-        messages: [
-          'I\'ve been trying to log into my account for the past hour but keep getting an error message. Can you help?',
-          'Is there a way to export my data to CSV? I couldn\'t find this option in the dashboard.',
-          'I noticed a charge on my card that I wasn\'t expecting. Can you explain what this is for?',
-          'Does your platform integrate with Salesforce? I need to sync our customer data.',
-          'I\'d like to upgrade my plan to get access to the advanced features. What are my options?',
-        ],
-      },
-      'Financial Services': {
-        subjects: [
-          'Question about recent transaction',
-          'Card declined at merchant',
-          'Requesting account statement',
-          'Interest rate inquiry',
-          'Lost card replacement',
-        ],
-        messages: [
-          'I see a transaction on my account that I don\'t recognize. Can you provide more details about this charge?',
-          'My card was declined when I tried to make a purchase today, even though I have sufficient funds. What could be the issue?',
-          'Could you please send me a statement for the last 3 months? I need it for my records.',
-          'What are the current interest rates for savings accounts? I\'m considering transferring funds.',
-          'I lost my card yesterday. Can you freeze it and send me a replacement?',
-        ],
-      },
-      'Healthcare': {
-        subjects: [
-          'Appointment rescheduling request',
-          'Question about test results',
-          'Prescription refill needed',
-          'Insurance coverage inquiry',
-          'Medical records request',
-        ],
-        messages: [
-          'I need to reschedule my appointment next week due to a conflict. Are there any available slots earlier?',
-          'I had blood work done last week and was told results would be ready in 3 days. Can you check on the status?',
-          'My prescription is about to run out. Can I get a refill without coming in for an appointment?',
-          'Does my insurance plan cover the procedure we discussed? I want to understand my out-of-pocket costs.',
-          'I\'m moving to a new city and need copies of my medical records. How do I request these?',
-        ],
-      },
-      'Travel': {
-        subjects: [
-          'Flight cancellation and refund',
-          'Hotel booking modification',
-          'Luggage lost during flight',
-          'Travel insurance claim',
-          'Booking confirmation not received',
-        ],
-        messages: [
-          'My flight was cancelled and I need to rebook. What are my options and will I get a refund?',
-          'I need to change the dates of my hotel reservation. The original booking was for next month.',
-          'I arrived at my destination but my luggage didn\'t. Can you help me track it down?',
-          'I had to cancel my trip due to a medical emergency. How do I file a claim with travel insurance?',
-          'I completed my booking online but never received a confirmation email. Can you verify my reservation?',
-        ],
-      },
-      'Telecom': {
-        subjects: [
-          'Internet connection issues',
-          'Bill higher than expected',
-          'Upgrade to faster plan',
-          'Service outage in my area',
-          'Router troubleshooting help',
-        ],
-        messages: [
-          'My internet has been very slow for the past few days. I\'ve tried restarting the router but it hasn\'t helped.',
-          'My bill this month is $20 higher than usual. Can you explain what changed?',
-          'I\'m interested in upgrading to your fiber plan. Is it available in my area?',
-          'Is there a service outage in my neighborhood? My internet has been down since this morning.',
-          'My router keeps disconnecting every few hours. Can you walk me through some troubleshooting steps?',
-        ],
-      },
-    }
-
-    const template = templates[vertical] || templates['E-commerce']
-    const randomSubject = template.subjects[Math.floor(Math.random() * template.subjects.length)]
-    const randomMessage = template.messages[Math.floor(Math.random() * template.messages.length)]
-
-    return { subject: randomSubject, message: randomMessage }
-  }
-
-  const createEndUser = async (displayName: string, email: string) => {
-    const data = await dixaApi(apiToken, '/v1/endusers', 'POST', { displayName, email })
-    return data.data.id
-  }
-
-  const createConversation = async (endUserId: string, contactEndpointId: string, subject: string, message: string) => {
+  const createConversation = async (apiToken: string, integrationId: string, subject: string, message: string) => {
     return await dixaApi(apiToken, '/v1/conversations', 'POST', {
-      requesterId: endUserId,
-      contactEndpointId,
-      subject,
-      message: { content: message },
+      requesterId: HARDCODED_REQUESTER_ID,
+      emailIntegrationId: integrationId,
+      subject: subject,
+      message: {
+        content: {
+          value: message,
+          _type: 'Text',
+        },
+        attachments: [],
+        _type: 'Inbound',
+      },
+      language: 'en',
+      _type: 'Email',
     })
   }
 
@@ -215,29 +147,53 @@ export default function ConversationGeneratorPage() {
     setIsGenerating(true)
     setResults([])
 
+    if (!selectedOrgId) {
+      setError('Please select an organization')
+      setIsGenerating(false)
+      return
+    }
+
+    if (!selectedIntegrationId) {
+      setError('Please select an email integration')
+      setIsGenerating(false)
+      return
+    }
+
     try {
+      // Get decrypted API token
+      const apiToken = await getDecryptedToken(selectedOrgId)
+
+      // Fetch template for selected vertical
+      const { data: templates, error: templateError } = await supabase
+        .from('conversation_templates')
+        .select('*')
+        .eq('vertical', vertical)
+        .limit(1)
+        .single()
+
+      if (templateError) throw templateError
+
+      if (!templates) {
+        throw new Error(`No template found for vertical: ${vertical}`)
+      }
+
       // Initialize results array
       const initialResults: ConversationResult[] = Array.from({ length: numberOfConversations }, (_, i) => ({
         index: i + 1,
-        customerName: '',
         status: 'pending',
       }))
       setResults(initialResults)
 
       // Create conversations one by one
       for (let i = 0; i < numberOfConversations; i++) {
-        const { displayName, email } = generateCustomerData(i)
-        const { subject, message } = generateConversationContent(vertical)
-
         try {
-          // Update status to show we're working on this one
-          setResults((prev) => prev.map((r, idx) => idx === i ? { ...r, customerName: displayName } : r))
-
-          // Create end user
-          const endUserId = await createEndUser(displayName, email)
-
-          // Create conversation
-          await createConversation(endUserId, selectedEndpointId, subject, message)
+          // Create conversation with template
+          await createConversation(
+            apiToken,
+            selectedIntegrationId,
+            templates.subject,
+            templates.message_content
+          )
 
           // Mark as success
           setResults((prev) =>
@@ -263,6 +219,53 @@ export default function ConversationGeneratorPage() {
       setError(err.message || 'Failed to generate conversations')
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const handleRefreshIntegrations = async () => {
+    if (!selectedOrgId) return
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const apiToken = await getDecryptedToken(selectedOrgId)
+
+      // Fetch fresh integrations from Dixa API
+      const integrationsData = await dixaApi(apiToken, '/v1/email-integrations', 'GET')
+
+      if (integrationsData && integrationsData.data && Array.isArray(integrationsData.data)) {
+        // Delete existing integrations for this org
+        await supabase
+          .from('email_integrations')
+          .delete()
+          .eq('organization_id', selectedOrgId)
+
+        // Insert fresh integrations
+        const emailIntegrations = integrationsData.data
+          .filter((integration: any) => integration.type === 'Email')
+          .map((integration: any) => ({
+            organization_id: selectedOrgId,
+            integration_id: integration.id,
+            name: integration.name || integration.id,
+            type: 'Email',
+          }))
+
+        if (emailIntegrations.length > 0) {
+          const { error: intError } = await supabase
+            .from('email_integrations')
+            .insert(emailIntegrations)
+
+          if (intError) throw intError
+        }
+
+        // Refresh the list
+        await fetchEmailIntegrations(selectedOrgId)
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to refresh email integrations')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -295,23 +298,83 @@ export default function ConversationGeneratorPage() {
           <h2 className="text-xl font-semibold text-primary mb-4">Configuration</h2>
 
           <form onSubmit={handleGenerate} className="space-y-4">
-            {/* API Token */}
+            {/* Organization Selector */}
             <div>
-              <label htmlFor="apiToken" className="block text-sm font-medium text-primary mb-2">
-                Dixa API Token *
+              <label htmlFor="organization" className="block text-sm font-medium text-primary mb-2">
+                Organization *
               </label>
-              <input
-                id="apiToken"
-                type="password"
-                value={apiToken}
-                onChange={handleTokenChange}
-                required
-                placeholder="Enter your Dixa API token"
-                className="w-full px-4 py-2 border border-secondary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-              <p className="mt-1 text-xs text-secondary">
-                Your API token is stored locally in your browser
-              </p>
+              <div className="flex gap-2">
+                <select
+                  id="organization"
+                  value={selectedOrgId}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  required
+                  disabled={loading || organizations.length === 0}
+                  className="flex-1 px-4 py-2 border border-secondary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                >
+                  {organizations.length === 0 ? (
+                    <option value="">No organizations found</option>
+                  ) : (
+                    organizations.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name} ({org.subdomain})
+                      </option>
+                    ))
+                  )}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="px-4 py-2 bg-primary text-light-text rounded-lg font-medium hover:bg-primary/90 transition-colors whitespace-nowrap"
+                >
+                  + New
+                </button>
+              </div>
+              {organizations.length === 0 && (
+                <p className="mt-1 text-xs text-secondary">
+                  Create an organization to get started
+                </p>
+              )}
+            </div>
+
+            {/* Email Integration Selector */}
+            <div>
+              <label htmlFor="integration" className="block text-sm font-medium text-primary mb-2">
+                Email Integration *
+              </label>
+              <div className="flex gap-2">
+                <select
+                  id="integration"
+                  value={selectedIntegrationId}
+                  onChange={(e) => setSelectedIntegrationId(e.target.value)}
+                  required
+                  disabled={loading || emailIntegrations.length === 0 || !selectedOrgId}
+                  className="flex-1 px-4 py-2 border border-secondary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                >
+                  {emailIntegrations.length === 0 ? (
+                    <option value="">No email integrations found</option>
+                  ) : (
+                    emailIntegrations.map((integration) => (
+                      <option key={integration.id} value={integration.integration_id}>
+                        {integration.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleRefreshIntegrations}
+                  disabled={loading || !selectedOrgId}
+                  className="px-4 py-2 border border-secondary/30 text-secondary rounded-lg font-medium hover:border-secondary hover:text-primary transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+              {emailIntegrations.length === 0 && selectedOrgId && (
+                <p className="mt-1 text-xs text-error-red">
+                  No email integrations found. Click Refresh to sync from Dixa.
+                </p>
+              )}
             </div>
 
             {/* Vertical/Theme */}
@@ -332,38 +395,6 @@ export default function ConversationGeneratorPage() {
                   </option>
                 ))}
               </select>
-            </div>
-
-            {/* Email Endpoint */}
-            <div>
-              <label htmlFor="endpoint" className="block text-sm font-medium text-primary mb-2">
-                Email Contact Endpoint *
-              </label>
-              <select
-                id="endpoint"
-                value={selectedEndpointId}
-                onChange={(e) => setSelectedEndpointId(e.target.value)}
-                required
-                disabled={loadingEndpoints || contactEndpoints.length === 0}
-                className="w-full px-4 py-2 border border-secondary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loadingEndpoints ? (
-                  <option>Loading endpoints...</option>
-                ) : contactEndpoints.length === 0 ? (
-                  <option>No email endpoints found</option>
-                ) : (
-                  contactEndpoints.map((ep) => (
-                    <option key={ep.id} value={ep.id}>
-                      {ep.name}
-                    </option>
-                  ))
-                )}
-              </select>
-              {contactEndpoints.length === 0 && apiToken && !loadingEndpoints && (
-                <p className="mt-1 text-xs text-error-red">
-                  No email endpoints found. Check your API token or create an email endpoint in Dixa.
-                </p>
-              )}
             </div>
 
             {/* Number of Conversations */}
@@ -396,7 +427,7 @@ export default function ConversationGeneratorPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isGenerating || !apiToken || contactEndpoints.length === 0}
+              disabled={isGenerating || !selectedOrgId || emailIntegrations.length === 0}
               className="w-full bg-primary text-light-text py-3 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? 'Generating Conversations...' : 'Generate Conversations'}
@@ -439,7 +470,6 @@ export default function ConversationGeneratorPage() {
                     <div className="flex-1">
                       <span className="text-sm font-medium text-primary">
                         Conversation {result.index}
-                        {result.customerName && ` - ${result.customerName}`}
                       </span>
                       {result.error && (
                         <p className="text-xs text-error-red mt-1">{result.error}</p>
@@ -467,6 +497,13 @@ export default function ConversationGeneratorPage() {
           </div>
         )}
       </main>
+
+      {/* Create Organization Modal */}
+      <CreateOrganizationModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={fetchOrganizations}
+      />
     </div>
   )
 }

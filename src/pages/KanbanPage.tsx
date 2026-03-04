@@ -51,6 +51,7 @@ export default function KanbanPage() {
   const [draggedCard, setDraggedCard] = useState<Card | null>(null)
   const [showAddCard, setShowAddCard] = useState<string | null>(null)
   const [showAddSwimlane, setShowAddSwimlane] = useState(false)
+  const [editingCard, setEditingCard] = useState<Card | null>(null)
 
   // Form states
   const [newCardTitle, setNewCardTitle] = useState('')
@@ -359,12 +360,11 @@ export default function KanbanPage() {
                 >
                   {swimlanesWithNull.map((swimlane) => {
                     const swimlaneCards = getCardsByStatusAndSwimlane(status, swimlane.id)
-                    if (swimlaneCards.length === 0 && swimlane.id !== null) return null
 
                     return (
                       <div key={swimlane.id || 'null'} className="mb-2">
                         {/* Swimlane Header */}
-                        {swimlane.id !== null && swimlaneCards.length > 0 && (
+                        {swimlane.id !== null && (
                           <div className="flex items-center justify-between mb-1 px-1">
                             <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                               {swimlane.name}
@@ -385,18 +385,16 @@ export default function KanbanPage() {
                               key={card.id}
                               draggable
                               onDragStart={() => handleDragStart(card)}
-                              className="bg-white rounded border border-secondary/20 p-2 cursor-move hover:shadow-md transition-shadow"
+                              onClick={() => setEditingCard(card)}
+                              className="bg-white rounded border border-secondary/20 p-2 cursor-pointer hover:shadow-md transition-shadow group"
                             >
                               <div className="flex items-start justify-between gap-2 mb-1">
                                 <h3 className="text-sm font-medium text-primary flex-1 leading-tight">
                                   {card.title}
                                 </h3>
-                                <button
-                                  onClick={() => deleteCard(card.id)}
-                                  className="text-xs text-red-600 hover:text-red-800 flex-shrink-0"
-                                >
-                                  ×
-                                </button>
+                                <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  Edit
+                                </span>
                               </div>
 
                               {card.description && (
@@ -495,6 +493,356 @@ export default function KanbanPage() {
           </div>
         </div>
       </main>
+
+      {/* Edit Card Modal */}
+      {editingCard && (
+        <EditCardModal
+          card={editingCard}
+          allTags={tags}
+          onClose={() => setEditingCard(null)}
+          onSave={async (updatedCard) => {
+            try {
+              // Update card in database
+              const { error: updateError } = await supabase
+                .from('kanban_cards')
+                .update({
+                  title: updatedCard.title,
+                  description: updatedCard.description,
+                  due_date: updatedCard.due_date,
+                })
+                .eq('id', updatedCard.id)
+
+              if (updateError) throw updateError
+
+              // Handle tag updates
+              const currentTagIds = editingCard.tags?.map(t => t.id) || []
+              const newTagIds = updatedCard.tags?.map(t => t.id) || []
+
+              // Remove old tags
+              const tagsToRemove = currentTagIds.filter(id => !newTagIds.includes(id))
+              if (tagsToRemove.length > 0) {
+                await supabase
+                  .from('kanban_card_tags')
+                  .delete()
+                  .eq('card_id', updatedCard.id)
+                  .in('tag_id', tagsToRemove)
+              }
+
+              // Add new tags
+              const tagsToAdd = newTagIds.filter(id => !currentTagIds.includes(id))
+              if (tagsToAdd.length > 0) {
+                await supabase
+                  .from('kanban_card_tags')
+                  .insert(tagsToAdd.map(tagId => ({
+                    card_id: updatedCard.id,
+                    tag_id: tagId
+                  })))
+              }
+
+              // Update local state
+              setCards(cards.map(c => c.id === updatedCard.id ? updatedCard : c))
+              setEditingCard(null)
+            } catch (err: any) {
+              setError(err.message)
+            }
+          }}
+          onDelete={async (cardId) => {
+            await deleteCard(cardId)
+            setEditingCard(null)
+          }}
+          onCreateTag={async (tagName, tagColor) => {
+            if (!board) return null
+            try {
+              const { data, error } = await supabase
+                .from('kanban_tags')
+                .insert({
+                  name: tagName,
+                  color: tagColor,
+                  board_id: board.id
+                })
+                .select()
+                .single()
+
+              if (error) throw error
+
+              setTags([...tags, data])
+              return data
+            } catch (err: any) {
+              setError(err.message)
+              return null
+            }
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Edit Card Modal Component
+function EditCardModal({
+  card,
+  allTags,
+  onClose,
+  onSave,
+  onDelete,
+  onCreateTag,
+}: {
+  card: Card
+  allTags: Tag[]
+  onClose: () => void
+  onSave: (card: Card) => void
+  onDelete: (cardId: string) => void
+  onCreateTag: (name: string, color: string) => Promise<Tag | null>
+}) {
+  const [title, setTitle] = useState(card.title)
+  const [description, setDescription] = useState(card.description || '')
+  const [dueDate, setDueDate] = useState(card.due_date || '')
+  const [selectedTags, setSelectedTags] = useState<Tag[]>(card.tags || [])
+  const [isAddingTag, setIsAddingTag] = useState(false)
+  const [newTagName, setNewTagName] = useState('')
+  const [newTagColor, setNewTagColor] = useState('#6B7280')
+
+  const availableTags = allTags.filter(t => !selectedTags.find(st => st.id === t.id))
+
+  const tagColors = [
+    '#EF4444', '#F97316', '#F59E0B', '#10B981',
+    '#06B6D4', '#3B82F6', '#8B5CF6', '#EC4899',
+  ]
+
+  const handleAddTag = async () => {
+    if (!newTagName.trim()) return
+
+    // Check if tag exists
+    const existingTag = allTags.find(t => t.name.toLowerCase() === newTagName.toLowerCase())
+    if (existingTag) {
+      if (!selectedTags.find(t => t.id === existingTag.id)) {
+        setSelectedTags([...selectedTags, existingTag])
+      }
+    } else {
+      // Create new tag
+      const newTag = await onCreateTag(newTagName, newTagColor)
+      if (newTag) {
+        setSelectedTags([...selectedTags, newTag])
+      }
+    }
+
+    setNewTagName('')
+    setIsAddingTag(false)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 space-y-4">
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <h2 className="text-2xl font-bold text-primary">Edit Card</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Title *</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              placeholder="Card title..."
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+              placeholder="Add a description..."
+            />
+          </div>
+
+          {/* Due Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+
+            {/* Selected Tags */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {selectedTags.map(tag => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium"
+                  style={{
+                    backgroundColor: tag.color + '20',
+                    color: tag.color,
+                    border: `1px solid ${tag.color}40`
+                  }}
+                >
+                  {tag.name}
+                  <button
+                    onClick={() => setSelectedTags(selectedTags.filter(t => t.id !== tag.id))}
+                    className="hover:opacity-70"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* Add Tag Section */}
+            {isAddingTag ? (
+              <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+                <input
+                  type="text"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddTag()
+                    if (e.key === 'Escape') {
+                      setIsAddingTag(false)
+                      setNewTagName('')
+                    }
+                  }}
+                  placeholder="Tag name..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  autoFocus
+                />
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">Color</label>
+                  <div className="flex gap-2">
+                    {tagColors.map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setNewTagColor(color)}
+                        className={`w-8 h-8 rounded-full border-2 ${
+                          newTagColor === color ? 'border-gray-900' : 'border-gray-300'
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddTag}
+                    className="px-3 py-1.5 text-sm bg-primary text-light-text rounded-lg hover:bg-primary/90"
+                  >
+                    Create Tag
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsAddingTag(false)
+                      setNewTagName('')
+                    }}
+                    className="px-3 py-1.5 text-sm text-secondary border border-secondary/30 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                {/* Available Tags */}
+                {availableTags.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">Or select existing tag:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {availableTags.map(tag => (
+                        <button
+                          key={tag.id}
+                          onClick={() => {
+                            setSelectedTags([...selectedTags, tag])
+                            setIsAddingTag(false)
+                          }}
+                          className="px-3 py-1 rounded-full text-sm font-medium hover:opacity-80 transition-opacity"
+                          style={{
+                            backgroundColor: tag.color + '20',
+                            color: tag.color,
+                            border: `1px solid ${tag.color}40`
+                          }}
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAddingTag(true)}
+                className="w-full px-4 py-2 text-sm text-secondary hover:bg-gray-50 rounded-lg transition-colors border-2 border-dashed border-gray-300"
+              >
+                + Add Tag
+              </button>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+            <button
+              onClick={() => {
+                if (confirm('Are you sure you want to delete this card?')) {
+                  onDelete(card.id)
+                }
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Delete Card
+            </button>
+
+            <div className="flex gap-3">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!title.trim()) return
+                  onSave({
+                    ...card,
+                    title,
+                    description: description || null,
+                    due_date: dueDate || null,
+                    tags: selectedTags
+                  })
+                }}
+                disabled={!title.trim()}
+                className="px-4 py-2 bg-primary text-light-text rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

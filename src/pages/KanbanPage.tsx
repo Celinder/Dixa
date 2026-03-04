@@ -289,6 +289,16 @@ export default function KanbanPage() {
     return cards.filter((c) => c.status === status && c.swimlane_id === swimlaneId)
   }
 
+  const getStatusColors = (status: string) => {
+    const colors = {
+      'Todo': 'bg-blue-100 border-blue-300 text-blue-800',
+      'Doing': 'bg-yellow-100 border-yellow-300 text-yellow-800',
+      'Awaiting Reply': 'bg-purple-100 border-purple-300 text-purple-800',
+      'Done': 'bg-green-100 border-green-300 text-green-800'
+    }
+    return colors[status as keyof typeof colors] || 'bg-gray-100 border-gray-300 text-gray-800'
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background-light">
@@ -352,9 +362,9 @@ export default function KanbanPage() {
             {STATUSES.map((status) => (
               <div key={status} className="flex-1 min-w-[280px] max-w-[320px]">
                 {/* Status Header */}
-                <div className="bg-white rounded-t-lg border border-b-0 border-secondary/20 px-3 py-1.5">
-                  <h2 className="font-semibold text-primary text-sm">{status}</h2>
-                  <div className="text-xs text-secondary">
+                <div className={`rounded-t-lg border border-b-0 px-3 py-1.5 ${getStatusColors(status)}`}>
+                  <h2 className="font-semibold text-sm">{status}</h2>
+                  <div className="text-xs opacity-75">
                     {cards.filter((c) => c.status === status).length} cards
                   </div>
                 </div>
@@ -376,19 +386,19 @@ export default function KanbanPage() {
                         onDrop={() => handleDrop(status, swimlane.id)}
                       >
                         {/* Swimlane Header */}
-                        {swimlane.id !== null && (
-                          <div className="flex items-center justify-between mb-1 px-1">
-                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                              {swimlane.name}
-                            </span>
+                        <div className="flex items-center justify-between mb-1 px-1">
+                          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            {swimlane.name}
+                          </span>
+                          {swimlane.id !== null && (
                             <button
                               onClick={() => deleteSwimlane(swimlane.id!)}
                               className="text-xs text-red-600 hover:text-red-800"
                             >
                               ×
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
 
                         {/* Cards */}
                         <div className="space-y-1.5">

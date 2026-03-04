@@ -5,6 +5,7 @@ import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import AddToolPage from '@/pages/AddToolPage'
 import ConversationGeneratorPage from '@/pages/ConversationGeneratorPage'
+import KanbanPage from '@/pages/KanbanPage'
 
 function App() {
   return (
@@ -33,6 +34,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ConversationGeneratorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kanban"
+            element={
+              <ProtectedRoute>
+                <KanbanPage />
               </ProtectedRoute>
             }
           />

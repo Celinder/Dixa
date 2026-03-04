@@ -49,6 +49,7 @@ export default function KanbanPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [draggedCard, setDraggedCard] = useState<Card | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
   const [showAddCard, setShowAddCard] = useState<string | null>(null)
   const [showAddSwimlane, setShowAddSwimlane] = useState(false)
   const [editingCard, setEditingCard] = useState<Card | null>(null)
@@ -243,10 +244,15 @@ export default function KanbanPage() {
 
   const handleDragStart = (card: Card) => {
     setDraggedCard(card)
+    setIsDragging(true)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
+  }
+
+  const handleDragEnd = () => {
+    setIsDragging(false)
   }
 
   const handleDrop = async (status: string, swimlaneId: string | null = null) => {
@@ -255,6 +261,7 @@ export default function KanbanPage() {
     try {
       await updateCard(draggedCard.id, { status: status as any, swimlane_id: swimlaneId })
       setDraggedCard(null)
+      setIsDragging(false)
     } catch (err: any) {
       setError(err.message)
     }
@@ -355,14 +362,19 @@ export default function KanbanPage() {
                 {/* Cards Container */}
                 <div
                   className="bg-gray-50 rounded-b-lg border border-secondary/20 p-2 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto"
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(status)}
                 >
                   {swimlanesWithNull.map((swimlane) => {
                     const swimlaneCards = getCardsByStatusAndSwimlane(status, swimlane.id)
 
                     return (
-                      <div key={swimlane.id || 'null'} className="mb-2">
+                      <div
+                        key={swimlane.id || 'null'}
+                        className={`mb-2 min-h-[60px] rounded p-1 transition-colors ${
+                          isDragging ? 'bg-blue-50 border-2 border-dashed border-blue-300' : ''
+                        }`}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleDrop(status, swimlane.id)}
+                      >
                         {/* Swimlane Header */}
                         {swimlane.id !== null && (
                           <div className="flex items-center justify-between mb-1 px-1">
@@ -385,7 +397,8 @@ export default function KanbanPage() {
                               key={card.id}
                               draggable
                               onDragStart={() => handleDragStart(card)}
-                              onClick={() => setEditingCard(card)}
+                              onDragEnd={handleDragEnd}
+                              onClick={() => !isDragging && setEditingCard(card)}
                               className="bg-white rounded border border-secondary/20 p-2 cursor-pointer hover:shadow-md transition-shadow group"
                             >
                               <div className="flex items-start justify-between gap-2 mb-1">

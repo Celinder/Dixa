@@ -55,7 +55,7 @@ export default function KanbanPage() {
   const [draggedCard, setDraggedCard] = useState<Card | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [draggedSwimlane, setDraggedSwimlane] = useState<Swimlane | null>(null)
-  const [showAddCard, setShowAddCard] = useState<string | null>(null)
+  const [showAddCard, setShowAddCard] = useState<{ status: string; swimlaneId: string | null } | null>(null)
   const [showAddSwimlane, setShowAddSwimlane] = useState(false)
   const [editingCard, setEditingCard] = useState<Card | null>(null)
 
@@ -169,7 +169,7 @@ export default function KanbanPage() {
     setTags(data || [])
   }
 
-  const addCard = async (status: string) => {
+  const addCard = async (status: string, swimlaneId: string | null = null) => {
     if (!board || !newCardTitle.trim()) return
 
     try {
@@ -180,6 +180,7 @@ export default function KanbanPage() {
           title: newCardTitle,
           description: newCardDescription || null,
           status,
+          swimlane_id: swimlaneId,
           due_date: newCardDueDate || null,
           position: cards.filter((c) => c.status === status).length,
         })
@@ -489,14 +490,29 @@ export default function KanbanPage() {
                             {swimlane.id !== null && <span className="opacity-50">⋮⋮</span>}
                             {swimlane.name}
                           </span>
-                          {swimlane.id !== null && (
+                          <div className="flex items-center gap-1">
                             <button
-                              onClick={() => deleteSwimlane(swimlane.id!)}
-                              className="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setShowAddCard({ status, swimlaneId: swimlane.id })
+                              }}
+                              className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-1"
+                              title="Add card to this swimlane"
                             >
-                              ×
+                              +
                             </button>
-                          )}
+                            {swimlane.id !== null && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  deleteSwimlane(swimlane.id!)
+                                }}
+                                className="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Cards */}
@@ -552,13 +568,59 @@ export default function KanbanPage() {
                               )}
                             </div>
                           ))}
+
+                          {/* Add card form within swimlane */}
+                          {showAddCard?.status === status && showAddCard?.swimlaneId === swimlane.id && (
+                            <div className="bg-white dark:bg-gray-700 rounded border border-secondary/20 dark:border-gray-600 p-2 mt-1.5">
+                              <input
+                                type="text"
+                                value={newCardTitle}
+                                onChange={(e) => setNewCardTitle(e.target.value)}
+                                placeholder="Card title"
+                                className="w-full px-2 py-1 text-sm border border-secondary/30 dark:border-gray-600 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20 bg-white dark:bg-gray-800 dark:text-white"
+                                autoFocus
+                              />
+                              <textarea
+                                value={newCardDescription}
+                                onChange={(e) => setNewCardDescription(e.target.value)}
+                                placeholder="Description (optional)"
+                                className="w-full px-2 py-1 text-sm border border-secondary/30 dark:border-gray-600 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20 resize-none bg-white dark:bg-gray-800 dark:text-white"
+                                rows={2}
+                              />
+                              <input
+                                type="date"
+                                value={newCardDueDate}
+                                onChange={(e) => setNewCardDueDate(e.target.value)}
+                                className="w-full px-2 py-1 text-sm border border-secondary/30 dark:border-gray-600 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20 bg-white dark:bg-gray-800 dark:text-white"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => addCard(status, swimlane.id)}
+                                  className="px-3 py-1 text-xs bg-primary text-light-text rounded hover:bg-primary/90"
+                                >
+                                  Add
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setShowAddCard(null)
+                                    setNewCardTitle('')
+                                    setNewCardDescription('')
+                                    setNewCardDueDate('')
+                                  }}
+                                  className="px-3 py-1 text-xs text-secondary dark:text-gray-400 border border-secondary/30 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )
                   })}
 
-                  {/* Add Card Button */}
-                  {showAddCard === status ? (
+                  {/* Add Card Button at bottom (for no specific swimlane) */}
+                  {showAddCard?.status === status && showAddCard?.swimlaneId === null ? (
                     <div className="bg-white dark:bg-gray-700 rounded border border-secondary/20 dark:border-gray-600 p-2 mt-2">
                       <input
                         type="text"
@@ -583,7 +645,7 @@ export default function KanbanPage() {
                       />
                       <div className="flex gap-2">
                         <button
-                          onClick={() => addCard(status)}
+                          onClick={() => addCard(status, showAddCard?.swimlaneId || null)}
                           className="px-3 py-1 text-xs bg-primary text-light-text rounded hover:bg-primary/90"
                         >
                           Add
@@ -603,7 +665,7 @@ export default function KanbanPage() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setShowAddCard(status)}
+                      onClick={() => setShowAddCard({ status, swimlaneId: null })}
                       className="w-full mt-2 px-2 py-1.5 text-sm text-secondary dark:text-gray-400 border border-dashed border-secondary/30 dark:border-gray-600 rounded hover:bg-white dark:hover:bg-gray-700 hover:border-secondary/50 dark:hover:border-gray-500 transition-colors"
                     >
                       + Add Card

@@ -291,10 +291,10 @@ export default function KanbanPage() {
 
   const getStatusColors = (status: string) => {
     const colors = {
-      'Todo': 'bg-blue-100 border-blue-300 text-blue-800',
-      'Doing': 'bg-yellow-100 border-yellow-300 text-yellow-800',
-      'Awaiting Reply': 'bg-purple-100 border-purple-300 text-purple-800',
-      'Done': 'bg-green-100 border-green-300 text-green-800'
+      'Todo': 'bg-slate-200 border-slate-300 text-slate-700',
+      'Doing': 'bg-amber-100 border-amber-200 text-amber-800',
+      'Awaiting Reply': 'bg-purple-200 border-purple-300 text-purple-800',
+      'Done': 'bg-emerald-100 border-emerald-200 text-emerald-800'
     }
     return colors[status as keyof typeof colors] || 'bg-gray-100 border-gray-300 text-gray-800'
   }

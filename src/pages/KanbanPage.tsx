@@ -134,6 +134,12 @@ export default function KanbanPage() {
 
     if (cardsError) throw cardsError
 
+    // Fetch all tags for the board
+    const { data: allTags } = await supabase
+      .from('kanban_tags')
+      .select('*')
+      .eq('board_id', boardId)
+
     // Fetch tags for each card
     const cardsWithTags = await Promise.all(
       (cardsData || []).map(async (card) => {
@@ -143,7 +149,7 @@ export default function KanbanPage() {
           .eq('card_id', card.id)
 
         const tagIds = (cardTags || []).map((ct) => ct.tag_id)
-        const cardTagsData = tags.filter((t) => tagIds.includes(t.id))
+        const cardTagsData = (allTags || []).filter((t) => tagIds.includes(t.id))
 
         return { ...card, tags: cardTagsData }
       })

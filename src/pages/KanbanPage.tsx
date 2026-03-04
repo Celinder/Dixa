@@ -48,8 +48,13 @@ export default function KanbanPage() {
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode')
+    return saved ? JSON.parse(saved) : false
+  })
   const [draggedCard, setDraggedCard] = useState<Card | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [draggedSwimlane, setDraggedSwimlane] = useState<Swimlane | null>(null)
   const [showAddCard, setShowAddCard] = useState<string | null>(null)
   const [showAddSwimlane, setShowAddSwimlane] = useState(false)
   const [editingCard, setEditingCard] = useState<Card | null>(null)
@@ -63,6 +68,15 @@ export default function KanbanPage() {
   useEffect(() => {
     initializeBoard()
   }, [])
+
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(isDarkMode))
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [isDarkMode])
 
   const initializeBoard = async () => {
     try {
@@ -267,6 +281,51 @@ export default function KanbanPage() {
     }
   }
 
+  // Swimlane drag handlers
+  const handleSwimlaneDragStart = (swimlane: Swimlane) => {
+    setDraggedSwimlane(swimlane)
+  }
+
+  const handleSwimlaneDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleSwimlaneDrop = async (targetSwimlane: Swimlane) => {
+    if (!draggedSwimlane || !board || draggedSwimlane.id === targetSwimlane.id) {
+      setDraggedSwimlane(null)
+      return
+    }
+
+    try {
+      // Reorder swimlanes
+      const newSwimlanes = [...swimlanes]
+      const draggedIndex = newSwimlanes.findIndex(s => s.id === draggedSwimlane.id)
+      const targetIndex = newSwimlanes.findIndex(s => s.id === targetSwimlane.id)
+
+      // Remove dragged and insert at target position
+      newSwimlanes.splice(draggedIndex, 1)
+      newSwimlanes.splice(targetIndex, 0, draggedSwimlane)
+
+      // Update positions in database
+      const updates = newSwimlanes.map((swimlane, index) =>
+        supabase
+          .from('kanban_swimlanes')
+          .update({ position: index })
+          .eq('id', swimlane.id)
+      )
+
+      await Promise.all(updates)
+
+      // Update local state
+      setSwimlanes(newSwimlanes.map((s, i) => ({ ...s, position: i })))
+      setDraggedSwimlane(null)
+    } catch (err: any) {
+      setError(err.message)
+      setDraggedSwimlane(null)
+    }
+  }
+
   const getDaysUntilDue = (dueDate: string | null): number | null => {
     if (!dueDate) return null
     const today = new Date()
@@ -313,30 +372,39 @@ export default function KanbanPage() {
   const swimlanesWithNull = [{ id: null, name: 'No Swimlane' }, ...swimlanes]
 
   return (
-    <div className="min-h-screen bg-background-light">
+    <div className="min-h-screen bg-background-light dark:bg-gray-900 transition-colors">
       <Header />
 
       <main className="max-w-full mx-auto px-4 py-3">
         {/* Header */}
         <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-primary">My Kanban Board</h1>
-          <button
-            onClick={() => setShowAddSwimlane(!showAddSwimlane)}
-            className="px-3 py-1.5 text-sm bg-primary text-light-text rounded hover:bg-primary/90"
-          >
-            {showAddSwimlane ? 'Cancel' : '+ Swimlane'}
-          </button>
+          <h1 className="text-2xl font-bold text-primary dark:text-white">My Kanban Board</h1>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+              title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDarkMode ? '☀️' : '🌙'}
+            </button>
+            <button
+              onClick={() => setShowAddSwimlane(!showAddSwimlane)}
+              className="px-3 py-1.5 text-sm bg-primary text-light-text rounded hover:bg-primary/90"
+            >
+              {showAddSwimlane ? 'Cancel' : '+ Swimlane'}
+            </button>
+          </div>
         </div>
 
         {/* Add Swimlane */}
         {showAddSwimlane && (
-          <div className="mb-3 p-2.5 bg-white rounded-lg border border-secondary/20">
+          <div className="mb-3 p-2.5 bg-white dark:bg-gray-800 rounded-lg border border-secondary/20 dark:border-gray-700">
             <input
               type="text"
               value={newSwimlane}
               onChange={(e) => setNewSwimlane(e.target.value)}
               placeholder="Swimlane name"
-              className="w-full px-3 py-1.5 text-sm border border-secondary/30 rounded focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-1.5 text-sm border border-secondary/30 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white dark:bg-gray-700 dark:text-white"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') addSwimlane()
               }}
@@ -351,7 +419,7 @@ export default function KanbanPage() {
         )}
 
         {error && (
-          <div className="mb-3 p-2.5 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
+          <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded text-sm">
             {error}
           </div>
         )}
@@ -371,7 +439,7 @@ export default function KanbanPage() {
 
                 {/* Cards Container */}
                 <div
-                  className="bg-gray-50 rounded-b-lg border border-secondary/20 p-2 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto"
+                  className="bg-gray-50 dark:bg-gray-800 rounded-b-lg border border-secondary/20 dark:border-gray-700 p-2 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto"
                 >
                   {swimlanesWithNull.map((swimlane) => {
                     const swimlaneCards = getCardsByStatusAndSwimlane(status, swimlane.id)
@@ -380,20 +448,45 @@ export default function KanbanPage() {
                       <div
                         key={swimlane.id || 'null'}
                         className={`mb-2 min-h-[60px] rounded p-1 transition-colors ${
-                          isDragging ? 'bg-blue-50 border-2 border-dashed border-blue-300' : ''
+                          isDragging ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-dashed border-blue-300 dark:border-blue-600' : ''
+                        } ${
+                          draggedSwimlane?.id === swimlane.id ? 'opacity-50' : ''
                         }`}
-                        onDragOver={handleDragOver}
-                        onDrop={() => handleDrop(status, swimlane.id)}
+                        onDragOver={(e) => {
+                          handleDragOver(e)
+                          if (swimlane.id !== null && draggedSwimlane) {
+                            handleSwimlaneDragOver(e)
+                          }
+                        }}
+                        onDrop={() => {
+                          if (draggedSwimlane && swimlane.id !== null) {
+                            handleSwimlaneDrop(swimlane as Swimlane)
+                          } else {
+                            handleDrop(status, swimlane.id)
+                          }
+                        }}
                       >
                         {/* Swimlane Header */}
-                        <div className="flex items-center justify-between mb-1 px-1">
-                          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        <div
+                          className={`flex items-center justify-between mb-1 px-1 ${
+                            swimlane.id !== null ? 'cursor-move' : ''
+                          }`}
+                          draggable={swimlane.id !== null}
+                          onDragStart={() => {
+                            if (swimlane.id !== null) {
+                              handleSwimlaneDragStart(swimlane as Swimlane)
+                            }
+                          }}
+                          onDragEnd={() => setDraggedSwimlane(null)}
+                        >
+                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                            {swimlane.id !== null && <span className="opacity-50">⋮⋮</span>}
                             {swimlane.name}
                           </span>
                           {swimlane.id !== null && (
                             <button
                               onClick={() => deleteSwimlane(swimlane.id!)}
-                              className="text-xs text-red-600 hover:text-red-800"
+                              className="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
                             >
                               ×
                             </button>
@@ -409,19 +502,19 @@ export default function KanbanPage() {
                               onDragStart={() => handleDragStart(card)}
                               onDragEnd={handleDragEnd}
                               onClick={() => !isDragging && setEditingCard(card)}
-                              className="bg-white rounded border border-secondary/20 p-2 cursor-pointer hover:shadow-md transition-shadow group"
+                              className="bg-white dark:bg-gray-700 rounded border border-secondary/20 dark:border-gray-600 p-2 cursor-pointer hover:shadow-md dark:hover:shadow-gray-900/50 transition-shadow group"
                             >
                               <div className="flex items-start justify-between gap-2 mb-1">
-                                <h3 className="text-sm font-medium text-primary flex-1 leading-tight">
+                                <h3 className="text-sm font-medium text-primary dark:text-white flex-1 leading-tight">
                                   {card.title}
                                 </h3>
-                                <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span className="text-xs text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                   Edit
                                 </span>
                               </div>
 
                               {card.description && (
-                                <p className="text-xs text-secondary mb-1 line-clamp-2 leading-snug">
+                                <p className="text-xs text-secondary dark:text-gray-400 mb-1 line-clamp-2 leading-snug">
                                   {card.description}
                                 </p>
                               )}
@@ -460,27 +553,27 @@ export default function KanbanPage() {
 
                   {/* Add Card Button */}
                   {showAddCard === status ? (
-                    <div className="bg-white rounded border border-secondary/20 p-2 mt-2">
+                    <div className="bg-white dark:bg-gray-700 rounded border border-secondary/20 dark:border-gray-600 p-2 mt-2">
                       <input
                         type="text"
                         value={newCardTitle}
                         onChange={(e) => setNewCardTitle(e.target.value)}
                         placeholder="Card title"
-                        className="w-full px-2 py-1 text-sm border border-secondary/30 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className="w-full px-2 py-1 text-sm border border-secondary/30 dark:border-gray-600 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20 bg-white dark:bg-gray-800 dark:text-white"
                         autoFocus
                       />
                       <textarea
                         value={newCardDescription}
                         onChange={(e) => setNewCardDescription(e.target.value)}
                         placeholder="Description (optional)"
-                        className="w-full px-2 py-1 text-sm border border-secondary/30 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20 resize-none"
+                        className="w-full px-2 py-1 text-sm border border-secondary/30 dark:border-gray-600 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20 resize-none bg-white dark:bg-gray-800 dark:text-white"
                         rows={2}
                       />
                       <input
                         type="date"
                         value={newCardDueDate}
                         onChange={(e) => setNewCardDueDate(e.target.value)}
-                        className="w-full px-2 py-1 text-sm border border-secondary/30 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className="w-full px-2 py-1 text-sm border border-secondary/30 dark:border-gray-600 rounded mb-1.5 focus:outline-none focus:ring-1 focus:ring-primary/20 bg-white dark:bg-gray-800 dark:text-white"
                       />
                       <div className="flex gap-2">
                         <button
@@ -496,7 +589,7 @@ export default function KanbanPage() {
                             setNewCardDescription('')
                             setNewCardDueDate('')
                           }}
-                          className="px-3 py-1 text-xs text-secondary border border-secondary/30 rounded hover:bg-gray-50"
+                          className="px-3 py-1 text-xs text-secondary dark:text-gray-400 border border-secondary/30 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
                         >
                           Cancel
                         </button>
@@ -505,7 +598,7 @@ export default function KanbanPage() {
                   ) : (
                     <button
                       onClick={() => setShowAddCard(status)}
-                      className="w-full mt-2 px-2 py-1.5 text-sm text-secondary border border-dashed border-secondary/30 rounded hover:bg-white hover:border-secondary/50 transition-colors"
+                      className="w-full mt-2 px-2 py-1.5 text-sm text-secondary dark:text-gray-400 border border-dashed border-secondary/30 dark:border-gray-600 rounded hover:bg-white dark:hover:bg-gray-700 hover:border-secondary/50 dark:hover:border-gray-500 transition-colors"
                     >
                       + Add Card
                     </button>
@@ -655,18 +748,18 @@ function EditCardModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 space-y-4">
           {/* Header */}
           <div className="flex items-start justify-between">
-            <h2 className="text-2xl font-bold text-primary">Edit Card</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <h2 className="text-2xl font-bold text-primary dark:text-white">Edit Card</h2>
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -675,42 +768,42 @@ function EditCardModal({
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Title *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Title *</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
               placeholder="Card title..."
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none bg-white dark:bg-gray-700 dark:text-white"
               placeholder="Add a description..."
             />
           </div>
 
           {/* Due Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Due Date</label>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
             />
           </div>
 
           {/* Tags */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tags</label>
 
             {/* Selected Tags */}
             <div className="flex flex-wrap gap-2 mb-3">
@@ -739,7 +832,7 @@ function EditCardModal({
 
             {/* Add Tag Section */}
             {isAddingTag ? (
-              <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+              <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <input
                   type="text"
                   value={newTagName}
@@ -752,19 +845,19 @@ function EditCardModal({
                     }
                   }}
                   placeholder="Tag name..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white dark:bg-gray-800 dark:text-white"
                   autoFocus
                 />
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Color</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Color</label>
                   <div className="flex gap-2">
                     {tagColors.map(color => (
                       <button
                         key={color}
                         onClick={() => setNewTagColor(color)}
                         className={`w-8 h-8 rounded-full border-2 ${
-                          newTagColor === color ? 'border-gray-900' : 'border-gray-300'
+                          newTagColor === color ? 'border-gray-900 dark:border-white' : 'border-gray-300 dark:border-gray-600'
                         }`}
                         style={{ backgroundColor: color }}
                       />
@@ -784,7 +877,7 @@ function EditCardModal({
                       setIsAddingTag(false)
                       setNewTagName('')
                     }}
-                    className="px-3 py-1.5 text-sm text-secondary border border-secondary/30 rounded-lg hover:bg-gray-50"
+                    className="px-3 py-1.5 text-sm text-secondary dark:text-gray-400 border border-secondary/30 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     Cancel
                   </button>
@@ -793,7 +886,7 @@ function EditCardModal({
                 {/* Available Tags */}
                 {availableTags.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-500 mb-2">Or select existing tag:</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Or select existing tag:</p>
                     <div className="flex flex-wrap gap-2">
                       {availableTags.map(tag => (
                         <button
@@ -819,7 +912,7 @@ function EditCardModal({
             ) : (
               <button
                 onClick={() => setIsAddingTag(true)}
-                className="w-full px-4 py-2 text-sm text-secondary hover:bg-gray-50 rounded-lg transition-colors border-2 border-dashed border-gray-300"
+                className="w-full px-4 py-2 text-sm text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors border-2 border-dashed border-gray-300 dark:border-gray-600"
               >
                 + Add Tag
               </button>
@@ -827,7 +920,7 @@ function EditCardModal({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
             <button
               onClick={() => {
                 if (confirm('Are you sure you want to delete this card?')) {
@@ -842,7 +935,7 @@ function EditCardModal({
             <div className="flex gap-3">
               <button
                 onClick={onClose}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
               >
                 Cancel
               </button>
